@@ -1,0 +1,20 @@
+{
+  "name": "Мой Кешбэк",
+  "short_name": "Кешбэк",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f2f2f7",
+  "theme_color": "#f2f2f7",
+  "icons": [
+    {
+      "src": "https://via.placeholder.com/192/007aff/ffffff?text=C",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://via.placeholder.com/512/007aff/ffffff?text=C",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
