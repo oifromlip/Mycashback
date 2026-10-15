@@ -14,6 +14,8 @@
             --text-color: #000000;
             --blue: #007aff;
             --red: #ff3b30;
+            --green: #34c759;
+            --gray: #8e8e93;
         }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -22,15 +24,35 @@
             margin: 0;
             padding: 20px;
             padding-top: max(20px, env(safe-area-inset-top));
+            padding-bottom: 40px;
         }
-        h1 { font-size: 28px; margin-bottom: 20px; }
+        h1 { font-size: 32px; font-weight: 700; margin-bottom: 5px; text-transform: capitalize; }
+        h2 { font-size: 20px; font-weight: 600; margin-top: 24px; margin-bottom: 12px; }
+        
+        .notification {
+            background-color: #ffcc00;
+            color: #000;
+            padding: 16px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            display: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .notification button {
+            background-color: #000;
+            color: #fff;
+            margin-top: 12px;
+            padding: 10px;
+        }
+
         .card {
             background-color: var(--card-bg);
             border-radius: 12px;
             padding: 16px;
             margin-bottom: 16px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
+        
         input {
             width: 100%;
             padding: 12px;
@@ -40,7 +62,15 @@
             font-size: 16px;
             box-sizing: border-box;
             -webkit-appearance: none;
+            background-color: #fafafa;
         }
+        .input-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .input-row input { margin-bottom: 0; }
+        
         button {
             width: 100%;
             padding: 14px;
@@ -52,119 +82,205 @@
             font-weight: 600;
             cursor: pointer;
         }
-        button.danger {
-            background-color: transparent;
-            color: var(--red);
-            margin-top: 20px;
-        }
-        .bank-title {
+
+        /* Стили для сводки по категориям */
+        .category-title {
             font-size: 18px;
             font-weight: 600;
-            margin: 0 0 10px 0;
+            margin-bottom: 12px;
+            color: var(--blue);
+            border-bottom: 1px solid #f2f2f7;
+            padding-bottom: 8px;
+        }
+        .bank-row {
             display: flex;
             justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #f2f2f7;
+        }
+        .bank-row:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+        .bank-name { font-size: 16px; font-weight: 500; }
+        .badge {
+            background-color: var(--green);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
         }
         .delete-btn {
-            color: var(--red);
-            font-size: 14px;
+            color: var(--gray);
+            font-size: 18px;
+            margin-left: 12px;
             cursor: pointer;
+            width: 24px;
+            text-align: right;
         }
-        .category-tag {
-            display: inline-block;
-            background-color: #e5e5ea;
-            padding: 6px 12px;
-            border-radius: 16px;
-            font-size: 14px;
-            margin: 0 6px 6px 0;
+        .empty-state {
+            text-align: center;
+            color: var(--gray);
+            padding: 20px 0;
+            font-size: 16px;
         }
     </style>
 </head>
 <body>
 
-    <h1>Кешбэк в этом месяце</h1>
+    <h1 id="monthTitle">Кешбэк</h1>
+    <p style="color: var(--gray); margin-top: 0; margin-bottom: 20px;">Сводка по всем банкам</p>
 
-    <div class="card">
-        <input type="text" id="bankName" placeholder="Название банка (например, Тинькофф)">
-        <input type="text" id="categories" placeholder="Категории (через запятую: Аптеки, Такси)">
-        <button onclick="addBank()">Добавить</button>
+    <!-- Уведомление о новом месяце -->
+    <div id="newMonthAlert" class="notification">
+        <strong>Наступил новый месяц!</strong><br>Данные за прошлый месяц очищены. Не забудьте выбрать и внести новые категории кешбека.
+        <button onclick="document.getElementById('newMonthAlert').style.display='none'">Понятно</button>
     </div>
 
-    <div id="banksContainer"></div>
+    <!-- Блок со списком категорий -->
+    <div id="summaryContainer"></div>
 
-    <button class="danger" onclick="clearAll()">Очистить всё для нового месяца</button>
+    <h2>Добавить категорию</h2>
+    <div class="card">
+        <input type="text" id="categoryName" placeholder="Категория (например: Супермаркеты)">
+        <input type="text" id="bankName" placeholder="Банк (например: Т-Банк)">
+        <div class="input-row">
+            <input type="number" id="percentValue" placeholder="Процент (%)" inputmode="decimal">
+            <button onclick="addEntry()" style="width: auto; padding: 12px 24px;">Добавить</button>
+        </div>
+    </div>
 
     <script>
-        // Загрузка данных из памяти телефона
-        let cashbackData = JSON.parse(localStorage.getItem('cashbackData')) || {};
+        // Массив записей вида: { id: 123, category: 'Аптеки', bank: 'Т-Банк', percent: 5 }
+        let entries = JSON.parse(localStorage.getItem('cashbackEntriesV2')) || [];
 
-        function saveAndRender() {
-            localStorage.setItem('cashbackData', JSON.stringify(cashbackData));
-            renderBanks();
+        function checkMonth() {
+            const now = new Date();
+            // Получаем ключ текущего месяца (например, "2026-9" для октября)
+            const currentMonthKey = `${now.getFullYear()}-${now.getMonth()}`;
+            const savedMonthKey = localStorage.getItem('cashbackMonthKey');
+
+            // Устанавливаем заголовок с названием месяца
+            const monthName = now.toLocaleString('ru', { month: 'long' });
+            document.getElementById('monthTitle').textContent = `Кешбэк: ${monthName}`;
+
+            if (savedMonthKey !== currentMonthKey) {
+                // Если месяц сменился и это не первый запуск приложения
+                if (savedMonthKey !== null) {
+                    document.getElementById('newMonthAlert').style.display = 'block';
+                }
+                
+                // Очищаем старые данные и сохраняем новый месяц
+                entries = [];
+                localStorage.setItem('cashbackEntriesV2', JSON.stringify(entries));
+                localStorage.setItem('cashbackMonthKey', currentMonthKey);
+            }
         }
 
-        function addBank() {
-            const bankInput = document.getElementById('bankName');
-            const catInput = document.getElementById('categories');
-            
-            const bankName = bankInput.value.trim();
-            const categoriesText = catInput.value.trim();
+        function saveAndRender() {
+            localStorage.setItem('cashbackEntriesV2', JSON.stringify(entries));
+            renderSummary();
+        }
 
-            if (!bankName || !categoriesText) {
-                alert("Заполните оба поля!");
+        function addEntry() {
+            const catInput = document.getElementById('categoryName');
+            const bankInput = document.getElementById('bankName');
+            const pctInput = document.getElementById('percentValue');
+
+            const category = catInput.value.trim();
+            const bank = bankInput.value.trim();
+            const percent = pctInput.value.trim();
+
+            if (!category || !bank || !percent) {
+                alert("Пожалуйста, заполните все поля!");
                 return;
             }
 
-            const categoriesArray = categoriesText.split(',').map(c => c.trim()).filter(c => c);
+            // Форматируем категорию (первая буква заглавная)
+            const formattedCategory = category.charAt(0).toUpperCase() + category.slice(1).toLowerCase();
 
-            cashbackData[bankName] = categoriesArray;
-            
-            bankInput.value = '';
+            entries.push({
+                id: Date.now(),
+                category: formattedCategory,
+                bank: bank,
+                percent: percent
+            });
+
             catInput.value = '';
+            bankInput.value = '';
+            pctInput.value = '';
+            
+            // Возвращаем фокус на категорию для удобного ввода
+            catInput.focus();
+
             saveAndRender();
         }
 
-        function deleteBank(bankName) {
-            delete cashbackData[bankName];
+        function deleteEntry(id) {
+            entries = entries.filter(entry => entry.id !== id);
             saveAndRender();
         }
 
-        function clearAll() {
-            if (confirm("Точно удалить все категории?")) {
-                cashbackData = {};
-                saveAndRender();
-            }
-        }
-
-        function renderBanks() {
-            const container = document.getElementById('banksContainer');
+        function renderSummary() {
+            const container = document.getElementById('summaryContainer');
             container.innerHTML = '';
 
-            for (const [bank, categories] of Object.entries(cashbackData)) {
+            if (entries.length === 0) {
+                container.innerHTML = '<div class="empty-state">Пока не добавлено ни одной категории</div>';
+                return;
+            }
+
+            // Группируем данные по категориям
+            const categoriesMap = {};
+            entries.forEach(entry => {
+                if (!categoriesMap[entry.category]) {
+                    categoriesMap[entry.category] = [];
+                }
+                categoriesMap[entry.category].push(entry);
+            });
+
+            // Сортируем категории по алфавиту для красоты
+            const sortedCategories = Object.keys(categoriesMap).sort();
+
+            sortedCategories.forEach(catName => {
                 const card = document.createElement('div');
                 card.className = 'card';
                 
-                const titleBlock = document.createElement('div');
-                titleBlock.className = 'bank-title';
-                titleBlock.innerHTML = `<span>${bank}</span> <span class="delete-btn" onclick="deleteBank('${bank}')">Удалить</span>`;
-                
-                card.appendChild(titleBlock);
+                const title = document.createElement('div');
+                title.className = 'category-title';
+                title.textContent = catName;
+                card.appendChild(title);
 
-                categories.forEach(cat => {
-                    const tag = document.createElement('span');
-                    tag.className = 'category-tag';
-                    tag.textContent = cat;
-                    card.appendChild(tag);
+                // Сортируем банки внутри категории по убыванию процента кешбека
+                categoriesMap[catName].sort((a, b) => parseFloat(b.percent) - parseFloat(a.percent));
+
+                categoriesMap[catName].forEach(item => {
+                    const row = document.createElement('div');
+                    row.className = 'bank-row';
+                    row.innerHTML = `
+                        <span class="bank-name">${item.bank}</span>
+                        <div style="display:flex; align-items:center;">
+                            <span class="badge">${item.percent}%</span>
+                            <span class="delete-btn" onclick="deleteEntry(${item.id})">✕</span>
+                        </div>
+                    `;
+                    card.appendChild(row);
                 });
 
                 container.appendChild(card);
-            }
+            });
         }
 
+        // Инициализация при загрузке
+        checkMonth();
+        renderSummary();
+
+        // Подключение Service Worker (для работы оффлайн)
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js');
         }
-
-        renderBanks();
     </script>
 </body>
 </html>
